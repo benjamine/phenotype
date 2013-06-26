@@ -92,6 +92,7 @@ Introductory Examples
         console.log(err);
     }
 
+    parrot.goTo = phenotype.pending;
     parrot.grab = phenotype.pending;
     // this time parrot provides all required methods
     Retriever.mixin(parrot);
