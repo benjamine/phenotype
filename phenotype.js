@@ -1,17 +1,22 @@
 'use strict';
 var moduleFactory = function(exports) {
 
-    var extend = function(target, source, recursive) {
+    var extend = function(target, source, options) {
+        var opt = options || {};
         if (typeof source == 'object') {
             for (var name in source) {
                 if (source.hasOwnProperty(name)) {
-                    if (recursive && typeof target[name] === 'object' &&
+                    if (opt.recursive && typeof target[name] === 'object' &&
                         typeof source[name] === 'object' &&
                         !(target instanceof Array) &&
                         !(source instanceof Array)) {
-                        extend(target[name], source[name]);
+                        extend(target[name], source[name], opt);
                     } else {
-                        target[name] = source[name];
+                        if (opt.memberCopy) {
+                            opt.memberCopy(target, source, name);
+                        } else {
+                            target[name] = source[name];
+                        }
                     }
                 }
             }
@@ -22,7 +27,7 @@ var moduleFactory = function(exports) {
     var phenotype = exports;
     extend(phenotype, {
         version: '0.0.1',
-        extend: extend,        
+        extend: extend,
         conventions: {
             storageNamePrefix: '_',
             metaPropertyName: '__meta__'
@@ -31,9 +36,41 @@ var moduleFactory = function(exports) {
 
     var conventions = phenotype.conventions;
 
+    var getErrorMethodName = function(error) {
+        if (typeof error.stack == 'string') {
+            var lines = error.stack.split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                var methodNameMatch;
+                if (line.indexOf('Error: ') >= 0 || line.indexOf('.pending') >= 0 || line.indexOf('pending') === 0) {
+                    if (!(methodNameMatch = /\[(as) ([^\]]+)\]/.exec(line))) {
+                        continue;
+                    }
+                }
+                var methodNameMatch = /\[(as) ([^\]]+)\]/.exec(line) ||
+                    /^(\s*at\s*)?[^\s]*\.([^\s\.]+)[\s\@]/.exec(line);
+                if (methodNameMatch && methodNameMatch[2]) {
+                    return methodNameMatch[2];
+                }
+                break;
+            }
+        }
+    }
+
     phenotype.noop = function noop(){};
     phenotype.pending = function pending(message) {
-        var error = new Error(message || 'implementation is pending');
+        var error;
+        if (message) {
+            error = new Error(message);
+        } else {
+            error = new Error('implementation is pending');
+            // try to get caller method name from stack trace
+            var methodName = getErrorMethodName(error);
+            if (methodName) {
+                error = new Error('implementation is pending, at method: "' + methodName + '"');
+                error.methodName = methodName;
+            }
+        }
         error.pending = true;
         throw error;
     };
@@ -552,13 +589,16 @@ var moduleFactory = function(exports) {
         return meta;
     };
 
-    var metaResolveMember = function(meta, name) {
+    var metaResolveMember = function(meta, name, options) {
         var subject = meta.subject;
         if (subject.hasOwnProperty(name)) {
             var subjectMember = subject[name];
             var err;
             var source = meta.sourceOf[name];
             if (subjectMember instanceof member.Required) {
+                if (options.ignoreRequired) {
+                    return;
+                }
                 err = new Error(subjectMember.getMessage(name, source));
                 err.required = subjectMember;
                 throw err;
@@ -587,7 +627,7 @@ var moduleFactory = function(exports) {
         }
     };
 
-    Meta.prototype.resolve = function() {
+    Meta.prototype.resolve = function(options) {
         // convert subject into a usable prototype
         // add default members
         var name;
@@ -600,7 +640,7 @@ var moduleFactory = function(exports) {
         }
         // validates prototype definition is complete
         for (name in this.subject) {
-            metaResolveMember(this, name);
+            metaResolveMember(this, name, options || {});
         }
         return this;
     };
@@ -661,6 +701,29 @@ var moduleFactory = function(exports) {
     Trait.prototype.unfix = function() {
         this.fixed = null;
         return this;
+    };
+
+    Trait.prototype.mixin = function(target) {
+        var source;
+        if (this.fixed) {
+            source = this.fixed.prototype;
+        } else {
+            source = this.meta().resolve({ ignoreRequired: true }).subject;
+        }        
+        extend(target, source, {
+            memberCopy: function(target, source, name) {
+                var sourceValue = source[name];
+                if (sourceValue instanceof member.Required) {
+                    if (typeof target[name] == 'undefined') {
+                        var error = new Error(sourceValue.getMessage(name, source.__meta__.sourceOf[name]));
+                        error.required = sourceValue;
+                        throw error;
+                    }
+                } else {
+                    target[name] = sourceValue;
+                }
+            }
+        });
     };
 
     var createProxy = function(traits, definition) {
@@ -791,6 +854,11 @@ var moduleFactory = function(exports) {
 
         return new ConstructorFunction();
     };
+
+    phenotype.mixin = function(target) {
+
+    };
+
 };
 if (typeof require == 'undefined') {
     moduleFactory(window.phenotype = {});

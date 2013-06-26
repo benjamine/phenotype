@@ -5,7 +5,7 @@
         <title>Phenotype Demo</title>
         <meta name="description" content="Phenotype Demo">
         <link rel="stylesheet" href="style.css">
-        <script src="phenotype.js"></script>
+        <script src="phenotype.js" type="application/javascript"></script>
     </head>
     <body>
         <a href="https://github.com/benjamine/phenotype" id="fork_me">
@@ -15,9 +15,229 @@
 
         <script type="text/javascript">
 
+    var Walker = new phenotype.Trait('Walker', {
+        goTo: function(location) {
+            phenotype.pending();
+        }
+    });
+
+    var Swimmer = new phenotype.Trait('Swimmer', {
+        goTo: function(location) {
+            phenotype.pending();
+        }
+    });
+
+    var Flyer = new phenotype.Trait('Flyer', {
+        goTo: function(location) {
+            phenotype.pending();
+        }
+    });
+
+    var Duck = new phenotype.Trait('Duck', Walker, Swimmer, Flyer);
+    try {
+        Duck.create();
+    } catch(err) {
+        // conflict, goTo is defined in Walker, Swimmer and Flyer
+        console.error(err);
+    }
+
+    // using "required"
+
+    var Retriever = new phenotype.Trait('Retriever', {
+        goTo: phenotype.member.required,
+        grab: phenotype.member.required,
+        retrieve: function(thing) {
+            this.goTo(thing.location);
+            this.grab(thing);
+            this.goTo(this.previousLocation);
+        }
+    });
+
+    try {
+        var retriever = Retriever.create();
+    } catch(err) {
+        // goTo is required by Retriever, this is an abstract Trait
+        console.error(err);
+    }
+
+    var Dog = new phenotype.Trait('Dog', Walker, Retriever, {
+        grab: function(thing) {
+            phenotype.pending();
+        }
+    });
+
+    var dog = Dog.create();
+
+    try {
+        var ball = {};
+        dog.retrieve(ball);
+    } catch(err) {
+        // throws "pending" error from grab method above
+        console.error(err);
+    }
+
+    // using mixin (allows to apply a Trait to a preexistent object)
+
+    var parrot = { name: 'pepe' };
+
+    try {
+        Retriever.mixin(parrot);
+    } catch(err) {
+        // goTo is required by Retriever, and parrot doesn't have it
+        console.log(err);
+    }
+
+    parrot.goTo = phenotype.pending;
+    parrot.grab = phenotype.pending;
+    // this time parrot provides all required methods
+    Retriever.mixin(parrot);
+
+    // using "aliasOf" and "from"
+
+    var Bird = new phenotype.Trait('Bird', Walker, Flyer, {
+        walkTo: phenotype.member.aliasOf(Walker, 'goTo'),
+        goTo: phenotype.member.from(Flyer)
+    });
+
+    var Hawk = new phenotype.Trait('Hawk', Bird, Retriever, {
+        grab: function(thing) {
+            phenotype.pending();
+        }
+    });
+
+    var Capibara = new phenotype.Trait('Capibara', Walker, Swimmer, {
+        walkTo: phenotype.member.aliasOf(Walker, 'goTo'),
+        swimTo: phenotype.member.aliasOf(Swimmer, 'goTo'),
+        goTo: function(location) {
+            location.isOnWater() ? this.swimTo(location) : this.walkTo(location);
+        }
+    });
+
+    // using ancestors
+
+    var Electric = new phenotype.Trait('Electric', {
+        shutdown: function() {
+            console.log('disconnected power');
+        }
+    });
+
+    var CombustionEngine = new phenotype.Trait('CombustionEngine', {
+        shutdown: function() {
+            console.log('disconnected fuel injection');
+        }
+    });
+
+    var Car = new phenotype.Trait('Car', Electric, CombustionEngine, {
+        open: function(all){
+            console.log('doors unlocked');
+        },
+        shutdown: phenotype.member.ancestors().then(function() {
+            console.log('doors locked');
+        })
+    });
+
+    var RetractableRoof = new phenotype.Trait('RetractableRoof', {
+        openRoof: function() {
+            console.log('roof retracted');
+        },
+        shutdown: function() {
+            console.log('roof extended');
+        }
+    });
+
+    var ConvertibleCar = new phenotype.Trait('ConvertibleCar', Car, RetractableRoof, {
+        open: phenotype.member.ancestors().wrap(function(inner, base){
+            return function(all){
+                inner.call(this, all);
+                if (all) {
+                    this.openRoof();
+                }
+            }
+        }),
+        shutdown: phenotype.member.ancestors()
+    });
+
+    // using pipe and async
+
+    var Peeler = new phenotype.Trait('Peeler', {
+        process: function(err, thing) {
+            console.log('peeling ' + thing);
+            // peeling takes time, but timeout at 1500ms
+            var async = phenotype.async(1500);
+            setTimeout(function(){
+                async.done('peeled ' + thing);
+            }, 1000);
+            return async;
+        }
+    });
+
+    Peeler.create().process(null, "apple").then(function(err, result){
+        if (err) {
+            console.error('error peeling apple');
+            return;
+        }
+        // logs "peeled apple"
+        console.log('result:', result);
+    });
+
+    var Chopper = new phenotype.Trait('Chopper', {
+        process: function(err, thing) {
+            console.log('chopping ' + thing);
+            return 'chopped ' + thing;
+        }
+    });
+
+    var Mixer = new phenotype.Trait('Mixer', {
+        process: function(err, thing) {
+            console.log('mixing ' + thing);
+            // mixing takes time
+            var async = phenotype.async(3000);
+            setTimeout(function(){
+                async.done('mixed ' + thing);
+            }, 1200);
+            return async;
+        }
+    });
+
+    var Oven = new phenotype.Trait('Oven', {
+        process: function(err, thing) {
+            console.log('baking ' + thing);
+            return 'baked ' + thing;
+        }
+    });
+
+    var CookingMachine = new phenotype.Trait('CookingMachine', Peeler, Chopper, Mixer, Oven, {
+        process: phenotype.member.ancestors().pipe({continueOnError: true})
+        .then(function(err, thing) {
+            if (err) {
+                console.error('cooking failed');
+                console.error(err);
+                return;
+            }
+            console.log('finished cooking:', thing);
+            return thing;
+        })
+    });
+
+    var machine = CookingMachine.create();
+
+    machine.process(null, "vegetables").then(function(err, result){
+        if (err) {
+            console.error('error, no result');
+            return;
+        }
+        // logs "result: baked mixed chopped peeled vegetables"
+        console.log('result:', result);
+    });
         </script>
+
+        <section id="main">
+            <div>Not much to see here,<br/>check output on browser console</div>
+        </section>
+
         <footer>
             <a href="https://github.com/benjamine/phenotype">Download Phenotype</a><br>
+            <p class="credits">developed by <a href="http://twitter.com/beneidel">Benjamín Eidelman</a></p>
         </footer>
     </body>
 </html>

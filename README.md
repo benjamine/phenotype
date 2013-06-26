@@ -81,6 +81,21 @@ Introductory Examples
         console.log(err);
     }
 
+    // using mixin (allows to apply a Trait to a preexistent object)
+
+    var parrot = { name: 'pepe' };
+
+    try {
+        Retriever.mixin(parrot);
+    } catch(err) {
+        // grab is required by Retriever, and parrot doesn't have it
+        console.log(err);
+    }
+
+    parrot.grab = phenotype.pending;
+    // this time parrot provides all required methods
+    Retriever.mixin(parrot);
+
     // using "aliasOf" and "from"
 
     var Bird = new phenotype.Trait('Bird', Walker, Flyer, {
@@ -88,7 +103,7 @@ Introductory Examples
         goTo: phenotype.member.from(Flyer)
     });
 
-    var Hawk = new phenotype.Trait('Hawk', Bird, Retriever {
+    var Hawk = new phenotype.Trait('Hawk', Bird, Retriever, {
         grab: function(thing) {
             phenotype.pending();
         }
