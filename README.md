@@ -3,7 +3,7 @@ Phenotype
 
 > "A phenotype (from Greek phainein, 'to show' + typos, 'type') is the composite of an organism's observable characteristics or traits" -- [Wikipedia](http://en.wikipedia.org/wiki/Phenotype)
 
-Phenotype is a modern typing system for Javascript, it's based on **["Traits"](https://en.wikipedia.org/wiki/Trait_(computer_programming))** as they exist in other programming languages (like Scala, Smalltalk or PHP).
+Phenotype is a modern typing system for Javascript, it's based on **["Traits"](https://en.wikipedia.org/wiki/Trait_(computer_programming)** as they exist in other programming languages (like Scala, Smalltalk or PHP).
 
 The main idea behind Traits is taking [SRP](http://en.wikipedia.org/wiki/Single_responsibility_principle) to the typing system by decoupling:
 
