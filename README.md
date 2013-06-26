@@ -7,10 +7,10 @@ Phenotype is a modern typing system for Javascript based on **["Traits"][1]**.
 
 The main idea behind Traits is taking [SRP](http://en.wikipedia.org/wiki/Single_responsibility_principle) to the typing system by decoupling:
 
-- The object type hierarchy (inheritance and polimorphism)
+- The object type hierarchy (inheritance and polimorphism); and
 - Behavior definition (composable units of **reusable** behavior)
 
-A *Trait* is, on it's simplest form, a set of methods (behavior). They provide the ultimate reusability of multiple inheritance, but without all the feared sloppyness (eg. unexpected/uncontrolled overrides, [the diamond problem](http://en.wikipedia.org/wiki/Diamond_problem#The_diamond_problem)).
+A *Trait* is, on its simplest form, a set of methods (behavior). They provide the ultimate reusability of multiple inheritance, but without all the feared sloppyness (eg. unexpected/uncontrolled overrides, and the famous [diamond problem](http://en.wikipedia.org/wiki/Diamond_problem#The_diamond_problem)).
 
 Phenotype traits extend the typical definition of *Trait*, to use them as the only type artifact (instead of traits being just a complement for classes).
 
