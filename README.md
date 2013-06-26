@@ -16,7 +16,6 @@ Phenotype traits extend the typical definition of *Trait*, to use them as the on
 
 This makes them simpler to use, and better matches the [prototypal nature of Javascript](http://javascript.crockford.com/prototypal.html).
 
-
 Introductory Examples
 --------------------
 
@@ -222,3 +221,16 @@ Introductory Examples
 
 
 ```
+
+Dynamic Prototypes
+-----------
+
+If available, phenotype will make use of ES6 Proxies, making created objects to inherit members dinamically, making Trait inheritance as dynamic as native prototypal inheritance.
+
+At the moment of this writing ES6 Proxies are available at:
+
+- Chrome (using harmony flag)
+- FF
+- Node.js (using harmony flag)
+
+If ES6 Proxies are not available, phenotype will fallback to using fixed prototypes, ie. objects won't have members added to Traits after the object creation. This can be forced using ```MyTrait.fixed()```.
