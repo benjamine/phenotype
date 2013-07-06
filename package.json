@@ -1,0 +1,26 @@
+{
+  "name": "phenotype",
+  "version": "0.0.0",
+  "description": "Javascript typing system based on Traits",
+  "main": "phenotype.js",
+  "scripts": {
+    "test": "node .\\node_modules\\mocha\\bin\\mocha",
+    "monitor": "node .\\node_modules\\mocha\\bin\\mocha --watch --check-leaks --reporter spec"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/benjamine/phenotype.git"
+  },
+  "keywords": [
+    "phenotype",
+    "traits",
+    "inheritance",
+    "type"
+  ],
+  "author": "Benjamin Eidelman",
+  "license": "MIT",
+  "devDependencies": {
+    "mocha": "~1.12.0",
+    "expect.js": "~0.2.0"
+  }
+}

@@ -75,6 +75,23 @@ var moduleFactory = function(exports) {
         throw error;
     };
 
+    phenotype.ProxyIsSupported = (function(){
+        return (typeof Proxy !== 'undefined' && typeof Proxy.create == 'function');
+    })();
+
+    phenotype.flatObject = function(obj) {
+        if (typeof obj == 'object') {
+            var flat = {};
+            for (var name in obj) {
+                if (name !== conventions.metaPropertyName) {
+                    flat[name] = obj[name];
+                }
+            }
+            return flat;
+        }
+        return obj;
+    };
+
     var Event = phenotype.Event = function Event(type, args, source){
         if (typeof type != 'string' || type.length < 1) {
             var error = new Error('invalid event type');
@@ -234,10 +251,6 @@ var moduleFactory = function(exports) {
         }
         return message.join('');
     };
-
-    var MultipleSources = function MultipleSources(){};
-
-    member.multipleSources = new MultipleSources();
 
     member.Required = function Required(){
         // this member must be defined on another trait to create an object
@@ -685,7 +698,7 @@ var moduleFactory = function(exports) {
                         meta.sourceOf[name],
                         currentValue
                     );
-                    meta.sourceOf[name] = member.multipleSources;
+                    meta.sourceOf[name] = meta.ownerTrait || meta.definition;
                 }
                 target[name].add(source, value);
             }
@@ -729,6 +742,8 @@ var moduleFactory = function(exports) {
                 }
                 err = new Error(subjectMember.getMessage(name, source));
                 err.required = subjectMember;
+                err.requiredMember = name;
+                err.requiredBy = meta.sourceOf[name];
                 throw err;
             }
             if (subjectMember instanceof member.Conflict) {
@@ -1157,7 +1172,7 @@ var moduleFactory = function(exports) {
                     typeName += (i > 0 ? '_' : '') + traits[i].name;
                 }
             }
-            if (typeof window.Proxy == 'undefined' || typeof window.Proxy.create !== 'function') {
+            if (!phenotype.ProxyIsSupported) {
                 // Proxy is not supported, use a fixed prototype
                 var meta = Meta.forObject(traits, definition).resolve();
                 meta.fixed = true;

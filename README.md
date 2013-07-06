@@ -16,6 +16,13 @@ Phenotype traits extend the typical definition of *Trait*, to use them as the on
 
 This makes them simpler to use, and better matches the [prototypal nature of Javascript](http://javascript.crockford.com/prototypal.html).
 
+Installation
+------------
+
+``` sh
+npm install phenotype
+```
+
 Introductory Examples
 --------------------
 
