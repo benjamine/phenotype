@@ -235,6 +235,40 @@ describe('Trait', function(){
 					child.build('a');
 					expect(child.list).to.be.eql(['a1', 'a2.1', 'a2.2', 'a2', 'a4']);
 				})
+				it ('calls ancestors in order', function(){
+					var Parent = new Trait({ 
+						list: [],
+						build: function(prefix){
+							this.list.push(prefix + 1); 
+						}
+					});
+					var Parent2a = new Trait({
+						list: phenotype.member.required,
+						build: function(prefix){
+							this.list.push(prefix + 2.1);
+						}
+					});
+					var Parent2b = new Trait({
+						list: phenotype.member.required,
+						build: function(prefix){
+							this.list.push(prefix + 2.2);
+						}
+					});
+					var Parent2 = new Trait(Parent2a, Parent2b, {
+						list: phenotype.member.required,
+						build: phenotype.member.ancestors().then(function(prefix){
+							this.list.push(prefix + 2);
+						})
+					});
+					var Child = new Trait(Parent, Parent2, {
+						build: phenotype.member.ancestors().then(function(prefix){
+							this.list.push(prefix + 4);
+						})
+					});
+					var child = Child.create();
+					child.build('a');
+					expect(child.list).to.be.eql(['a1', 'a2.1', 'a2.2', 'a2', 'a4']);
+				})
 			})
 		})
 	})
