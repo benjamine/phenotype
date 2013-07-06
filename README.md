@@ -10,7 +10,7 @@ The main idea behind Traits is taking [SRP](http://en.wikipedia.org/wiki/Single_
 - The object type hierarchy (inheritance and polimorphism); and
 - Behavior definition (composable units of **reusable** behavior)
 
-A *Trait* is, in its simplest form, a set of methods (behavior). They provide the ultimate reusability of multiple inheritance, but without all the feared sloppyness (eg. unexpected/uncontrolled overrides, and the famous [diamond problem](http://en.wikipedia.org/wiki/Diamond_problem#The_diamond_problem)).
+A *Trait* is, on its simplest form, a set of methods (behavior). They provide the ultimate reusability of multiple inheritance, but without all the feared sloppyness (eg. unexpected/uncontrolled overrides, and the famous [diamond problem](http://en.wikipedia.org/wiki/Diamond_problem#The_diamond_problem)).
 
 Phenotype traits extend the typical definition of *Trait*, to use them as the only type artifact (instead of traits being just a complement for classes).
 
@@ -21,35 +21,54 @@ Introductory Examples
 
 ``` js
 
-    var Walker = new phenotype.Trait('Walker', {
+    var Trait = phenotype.Trait;
+
+    var Walker = new Trait('Walker', {
         goTo: function(location) {
             phenotype.pending();
         }
     });
 
-    var Swimmer = new phenotype.Trait('Swimmer', {
+    var Swimmer = new Trait('Swimmer', {
         goTo: function(location) {
             phenotype.pending();
         }
     });
 
-    var Flyer = new phenotype.Trait('Flyer', {
+    var Flyer = new Trait('Flyer', {
         goTo: function(location) {
             phenotype.pending();
         }
     });
 
-    var Duck = new phenotype.Trait('Duck', Walker, Swimmer, Flyer);
+    var Duck = new Trait('Duck', Walker, Swimmer, Flyer);
     try {
         Duck.create();
     } catch(err) {
         // conflict, goTo is defined in Walker, Swimmer and Flyer
-        console.log(err);
+        console.error(err);
     }
+
+    // updating
+
+    var jet = Flyer.create();
+
+    // add a trait to existing object
+    var Vehicle = new Trait('Vehicle', { seats: 3 });
+    Vehicle.addTo(jet);
+
+    // logs 3
+    console.log(jet.seats);
+
+    // modify existing Trait
+    Vehicle.add({ seats: 4, wings: 2 }, new Trait({ pilot: true }));
+
+    // logs 4 2 true
+    console.log(jet.seats, jet.wings, jet.pilot);
 
     // using "required"
 
-    var Retriever = new phenotype.Trait('Retriever', {
+    var Retriever = new Trait('Retriever', {
         goTo: phenotype.member.required,
         grab: phenotype.member.required,
         retrieve: function(thing) {
@@ -63,10 +82,10 @@ Introductory Examples
         var retriever = Retriever.create();
     } catch(err) {
         // goTo is required by Retriever, this is an abstract Trait
-        console.log(err);
+        console.error(err);
     }
 
-    var Dog = new phenotype.Trait('Dog', Walker, Retriever, {
+    var Dog = new Trait('Dog', Walker, Retriever, {
         grab: function(thing) {
             phenotype.pending();
         }
@@ -75,10 +94,11 @@ Introductory Examples
     var dog = Dog.create();
 
     try {
+        var ball = {};
         dog.retrieve(ball);
     } catch(err) {
         // throws "pending" error from grab method above
-        console.log(err);
+        console.error(err);
     }
 
     // using mixin (allows to apply a Trait to a preexistent object)
@@ -88,7 +108,7 @@ Introductory Examples
     try {
         Retriever.mixin(parrot);
     } catch(err) {
-        // grab is required by Retriever, and parrot doesn't have it
+        // goTo is required by Retriever, and parrot doesn't have it
         console.log(err);
     }
 
@@ -99,18 +119,18 @@ Introductory Examples
 
     // using "aliasOf" and "from"
 
-    var Bird = new phenotype.Trait('Bird', Walker, Flyer, {
+    var Bird = new Trait('Bird', Walker, Flyer, {
         walkTo: phenotype.member.aliasOf(Walker, 'goTo'),
         goTo: phenotype.member.from(Flyer)
     });
 
-    var Hawk = new phenotype.Trait('Hawk', Bird, Retriever, {
+    var Hawk = new Trait('Hawk', Bird, Retriever, {
         grab: function(thing) {
             phenotype.pending();
         }
     });
 
-    var Capibara = new phenotype.Trait('Capibara', Walker, Swimmer, {
+    var Capibara = new Trait('Capibara', Walker, Swimmer, {
         walkTo: phenotype.member.aliasOf(Walker, 'goTo'),
         swimTo: phenotype.member.aliasOf(Swimmer, 'goTo'),
         goTo: function(location) {
@@ -120,19 +140,19 @@ Introductory Examples
 
     // using ancestors
 
-    var Electric = new phenotype.Trait('Electric', {
+    var Electric = new Trait('Electric', {
         shutdown: function() {
             console.log('disconnected power');
         }
     });
 
-    var CombustionEngine = new phenotype.Trait('CombustionEngine', {
+    var CombustionEngine = new Trait('CombustionEngine', {
         shutdown: function() {
             console.log('disconnected fuel injection');
         }
     });
 
-    var Car = new phenotype.Trait('Car', Electric, CombustionEngine, {
+    var Car = new Trait('Car', Electric, CombustionEngine, {
         open: function(all){
             console.log('doors unlocked');
         },
@@ -141,7 +161,7 @@ Introductory Examples
         })
     });
 
-    var RetractableRoof = new phenotype.Trait('RetractableRoof', {
+    var RetractableRoof = new Trait('RetractableRoof', {
         openRoof: function() {
             console.log('roof retracted');
         },
@@ -150,7 +170,7 @@ Introductory Examples
         }
     });
 
-    var ConvertibleCar = new phenotype.Trait('ConvertibleCar', Car, RetractableRoof, {
+    var ConvertibleCar = new Trait('ConvertibleCar', Car, RetractableRoof, {
         open: phenotype.member.ancestors().wrap(function(inner, base){
             return function(all){
                 inner.call(this, all);
@@ -164,7 +184,7 @@ Introductory Examples
 
     // using pipe and async
 
-    var Peeler = new phenotype.Trait('Peeler', {
+    var Peeler = new Trait('Peeler', {
         process: function(err, thing) {
             console.log('peeling ' + thing);
             // peeling takes time, but timeout at 1500ms
@@ -185,14 +205,14 @@ Introductory Examples
         console.log('result:', result);
     });
 
-    var Chopper = new phenotype.Trait('Chopper', {
+    var Chopper = new Trait('Chopper', {
         process: function(err, thing) {
             console.log('chopping ' + thing);
             return 'chopped ' + thing;
         }
     });
 
-    var Mixer = new phenotype.Trait('Mixer', {
+    var Mixer = new Trait('Mixer', {
         process: function(err, thing) {
             console.log('mixing ' + thing);
             // mixing takes time
@@ -204,14 +224,14 @@ Introductory Examples
         }
     });
 
-    var Oven = new phenotype.Trait('Oven', {
+    var Oven = new Trait('Oven', {
         process: function(err, thing) {
             console.log('baking ' + thing);
             return 'baked ' + thing;
         }
     });
 
-    var CookingMachine = new phenotype.Trait('CookingMachine', Peeler, Chopper, Mixer, Oven, {
+    var CookingMachine = new Trait('CookingMachine', Peeler, Chopper, Mixer, Oven, {
         process: phenotype.member.ancestors().pipe({continueOnError: true})
         .then(function(err, thing) {
             if (err) {
@@ -234,6 +254,45 @@ Introductory Examples
         // logs "result: baked mixed chopped peeled vegetables"
         console.log('result:', result);
     });
+
+    // properties & events
+
+    var Labrador = new Trait('Labrador', Dog, Retriever, phenotype.HasEvents, {
+        name: phenotype.member.property(),        
+        initial: phenotype.member.property(function(){
+            return this.name().substr(0, 1).toUpperCase();
+        }),
+    });
+
+    var spike = Labrador.create();
+    spike.name('Spike');
+
+    // logs "Spike"
+    console.log(spike.name());
+    // logs "S"
+    console.log(spike.initial());
+
+    spike.on({
+        bark: function(e, volume) {
+            console.log(e.source.name(), 'barked', volume);
+        },
+        namechanged: function(e, data) {
+            console.log(data.property.name, 'changed from', data.previousValue, 'to', data.value);
+        },
+        initialchanged: function(e, data) {
+            console.log(data.property.name, 'changed from', data.previousValue, 'to', data.value);
+        }
+    });
+
+    // logs "Spikey barked loud"
+    spike.emit('bark', 'loud');
+
+    spike.off('bark');
+
+    spike.emit('bark', 'louder');
+
+    // logs "name changed from Spike to Spikey"
+    spike.name('Spikey');
 
 
 ```

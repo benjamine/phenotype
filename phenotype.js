@@ -38,16 +38,16 @@ var moduleFactory = function(exports) {
 
     var getErrorMethodName = function(error) {
         if (typeof error.stack == 'string') {
+            var methodNameMatch;
             var lines = error.stack.split('\n');
             for (var i = 0; i < lines.length; i++) {
                 var line = lines[i];
-                var methodNameMatch;
                 if (line.indexOf('Error: ') >= 0 || line.indexOf('.pending') >= 0 || line.indexOf('pending') === 0) {
                     if (!(methodNameMatch = /\[(as) ([^\]]+)\]/.exec(line))) {
                         continue;
                     }
                 }
-                var methodNameMatch = /\[(as) ([^\]]+)\]/.exec(line) ||
+                methodNameMatch = /\[(as) ([^\]]+)\]/.exec(line) ||
                     /^(\s*at\s*)?[^\s]*\.([^\s\.]+)[\s\@]/.exec(line);
                 if (methodNameMatch && methodNameMatch[2]) {
                     return methodNameMatch[2];
@@ -55,7 +55,7 @@ var moduleFactory = function(exports) {
                 break;
             }
         }
-    }
+    };
 
     phenotype.noop = function noop(){};
     phenotype.pending = function pending(message) {
@@ -73,6 +73,137 @@ var moduleFactory = function(exports) {
         }
         error.pending = true;
         throw error;
+    };
+
+    var Event = phenotype.Event = function Event(type, args, source){
+        if (typeof type != 'string' || type.length < 1) {
+            var error = new Error('invalid event type');
+            error.invalidEventType = true;
+            throw error;
+        }
+        this.type = type;
+        if (args) {
+            args.unshift(this);
+            this.args = args;
+        } else {
+            this.args = [this];
+        }
+        this.source = source || null;
+    };
+
+    var eventEmitterCount = 0;
+
+    var EventEmitter = phenotype.EventEmitter = function(source) {
+        eventEmitterCount++;
+        this.id = eventEmitterCount;
+        this.source = source || this;
+        this.propertyTrackers = {};
+    };
+
+    EventEmitter.prototype.listeners = function(eventType, createIfNotExists) {
+        var listeners = this.listeners;
+        if (!listeners) {
+            if (!createIfNotExists) return;
+            listeners = this.listeners = {};
+        }
+        var eventListeners = listeners[eventType];
+        if (!eventListeners) {
+            if (!createIfNotExists) return;
+            eventListeners = listeners[eventType] = [];
+        }
+        return eventListeners;
+    };
+
+    EventEmitter.prototype.on = function() {
+        var eventType, listener;
+        if (typeof arguments[0] == 'object') {
+            var map = arguments[0];
+            for (eventType in map) {
+                this.on(eventType, map[eventType]);
+            }
+            return this;
+        } else {
+            eventType = arguments[0];
+            listener = arguments[1];
+        }
+        var listeners = this.listeners(eventType, true);
+        listeners.push(listener);
+        return this;
+    };
+
+    EventEmitter.prototype.off = function() {
+        var eventType, listener;
+        if (typeof arguments[0] == 'object') {
+            var map = arguments[0];
+            for (eventType in map) {
+                this.off(eventType, map[eventType]);
+            }
+            return this;
+        } else {
+            eventType = arguments[0];
+            listener = arguments[1];
+        }
+        if (!eventType) {
+            this.listeners.length = 0;
+            return this;
+        }
+        var listeners = this.listeners(eventType);
+        if (!listeners) return this;
+        if (!listener) {
+            listeners.length = 0;
+            return this;
+        }
+        var length = listeners.length;
+        for (var i = 0; i < length; i++) {
+            if (listeners[i] === listener) {
+                listeners.splice(i, 1);
+                i--;
+                length--;
+            }
+        }
+        return this;
+    };
+
+    EventEmitter.prototype.emit = function(eventType) {
+        var evnt;
+        var listeners;
+        if (eventType instanceof Event) {
+            listeners = this.listeners(event.type);
+            if (!listeners) return this;
+            evnt.source = this.source;
+        } else {
+            listeners = this.listeners(eventType);
+            if (!listeners) return this;
+            evnt = new Event(eventType, arguments.length > 1 ? Array.prototype.slice.call(arguments, 1) : null, this.source);
+        }
+        var length = listeners.length;
+        for (var i = 0; i < length; i++) {
+            try {
+                listeners[i].apply(evnt.source, evnt.args);
+            } catch (error) {
+                if (evnt.type === 'error' || !this.listeners('listenererror')) {
+                    console.error('Event listener ' + error.stack);
+                } else {
+                    this.emit('listenererror', {
+                        originalEvent: evnt,
+                        error: error,
+                        listener: listeners[i]
+                    });
+                }
+            }
+        }
+        return this;
+    };
+
+    EventEmitter.prototype.propertyChanged = function(property, value, previousValue) {
+        var eventType = property.name + 'changed';
+        if (this.listeners(eventType)) {
+            this.emit(eventType, {
+                property: property,
+                previousValue: previousValue,
+                value: value
+            });
+        }
     };
 
     // constants to use on trait definitions
@@ -427,7 +558,13 @@ var moduleFactory = function(exports) {
     };
 
     member.Property = function Property(options) {
-        this.options = options;
+        this.options = typeof options == 'function' ? { getter: options } : options;
+    };
+
+    member.Property.all = new EventEmitter();
+
+    member.Property.prototype.isReadOnly = function() {
+        return !!(this.options && this.options.getter && !this.options.setter);
     };
 
     member.Property.prototype.getValue = function(memberName, source){
@@ -436,26 +573,40 @@ var moduleFactory = function(exports) {
             this.storageName = conventions.storageNamePrefix + memberName;
         }
         var property = this;
-        return function(value) {
+        var accessor = function(value) {
             if (typeof value == 'undefined') {
-                return this[property.storageName];
-            } else {
-                var previousValue = this[property.storageName];
-                if (previousValue !== value) {
-                    this[property.storageName] = value;
-                    if (typeof property.changed == 'function') {
-                        property.changed({
-                            property: property,
-                            type: 'changed',
-                            target: this,
-                            previousValue: previousValue,
-                            value: value
-                        });
-                    }
+                var returnValue, tracker;
+                if (property.options && property.options.getter) {
+                    returnValue = property.options.getter.call(this);
+                } else {
+                    returnValue = this[property.storageName];
                 }
-                return value;
+                return returnValue;
+            } else {
+                if (property.options && property.options.getter) {
+                    if (property.options && property.options.setter) {
+                        property.options.setter.call(this, value);
+                    } else {
+                        var error = new Error('property is readonly: "' + property.name + '"');
+                        error.propertyIsReadonly = property;
+                        error.source = this;
+                        throw error;
+                    }
+                    return property.options.getter.call(this);
+                } else {
+                    var previousValue = this[property.storageName];
+                    if (previousValue !== value) {
+                        this[property.storageName] = value;
+                        if (this._eventEmitter) {
+                            this._eventEmitter.propertyChanged(property, value, previousValue);
+                        }
+                    }
+                    return value;
+                }
             }
         };
+        accessor.property = this;
+        return accessor;
     };
 
     member.property = function(options) {
@@ -468,18 +619,32 @@ var moduleFactory = function(exports) {
         return evilEval('(function ' + name + '(){})');
     };
 
+    var removeAllProperties = function(obj, removeMeta) {
+        var keys = [];
+        for (var name in obj) {
+            if (obj.hasOwnProperty(name) && (removeMeta || name !== conventions.metaPropertyName)) {
+                keys.push(name);
+            }
+        }
+        for (var i = keys.length - 1; i >= 0; i--) {
+            delete obj[keys[i]];
+        }
+    };
+
     var Meta = phenotype.Meta = function Meta(subject) {
+        this.traits = [];
+        this.definition = null;
+
         this.subject = subject || {};
         this.subject[conventions.metaPropertyName] = this;
         this.sourceOf = {};
         this.originalNameOf = {};
-        this.traits = {};
         var base = this.base = function metaBase(subject, name) {
             var args = Array.prototype.slice.apply(arguments).slice(2);
             return base[name].apply(subject, args);
         };
         this.baseSource = {};
-    };
+    };    
 
     Meta.of = function(subject) {
         if (typeof subject === 'object') {
@@ -529,25 +694,20 @@ var moduleFactory = function(exports) {
 
     var copyMetaMembers = function(meta, from) {
         var source, members, override;
-        if (from instanceof Meta) {
-            // copying from a parent trait
+        if (from instanceof Trait) {
+            // copying from Trait
+            var fromMeta = from.meta();
             source = function(name) {
-                return from.sourceOf[name];
+                return fromMeta.sourceOf[name];
             };
-            members = from.subject;
+            members = fromMeta.subject;
+            override = false;
         } else {
-            source = from;
+            // copying from definition
+            members = from;
+            source = meta.ownerTrait || from;
             override = true;
-            if (from instanceof Trait) {
-                // copying trait definition
-                members = from.definition;
-                meta.traits[from.name] = from;
-            } else {
-                // copying object definition
-                members = from;
-            }
         }
-
         for (var name in members) {
             if (members.hasOwnProperty(name) && name !== conventions.metaPropertyName) {
                 var memberValue = members[name];
@@ -555,38 +715,6 @@ var moduleFactory = function(exports) {
                 setMetaMember(meta, name, memberValue, memberSource, override);
             }
         }
-    };
-
-    Meta.forTrait = function(trait) {
-        var meta = new Meta();
-        var traits = trait.traits;
-        if (traits && traits.length) {
-            var traitsLength = traits.length;
-            for (var i = 0; i < traitsLength; i++) {
-                copyMetaMembers(meta, traits[i].meta());
-            }
-        }
-        if (trait.definition) {
-            copyMetaMembers(meta, trait);
-        }
-        return meta;
-    };
-
-    Meta.forObject = function(traits, definition) {
-        if (traits && traits.length === 1 && !definition) {
-            return traits[0].meta();
-        }
-        var meta = new Meta();
-        if (traits && traits.length) {
-            var traitsLength = traits.length;
-            for (var i = 0; i < traitsLength; i++) {
-                copyMetaMembers(meta, traits[i].meta());
-            }
-        }
-        if (definition) {
-            copyMetaMembers(meta, definition);
-        }
-        return meta;
     };
 
     var metaResolveMember = function(meta, name, options) {
@@ -627,6 +755,48 @@ var moduleFactory = function(exports) {
         }
     };
 
+    Meta.forTrait = function(trait) {
+        var meta = new Meta();
+        meta.ownerTrait = trait;
+        meta.traits = trait.traits || [];
+        meta.definition = trait.definition || null;
+        buildMetaSubject(meta);
+        return meta;
+    };
+
+    Meta.forObject = function(traits, definition) {
+        /*
+        if (traits && traits.length === 1 && !definition) {
+            // if simple of child of single trait, reuse Meta (object won't be extensible)
+            return traits[0].meta();
+        }
+        */
+        var meta = new Meta();
+        meta.traits = traits || [];
+        meta.definition = definition || null;
+        buildMetaSubject(meta);
+        return meta;
+    };
+
+    Meta.prototype.refresh = function() {
+        removeAllProperties(this.subject);
+        buildMetaSubject(this);
+        return this;
+    };
+
+    var buildMetaSubject = function(meta) {
+        var traits = meta.traits;
+        if (traits && traits.length) {
+            var traitsLength = traits.length;
+            for (var i = 0; i < traitsLength; i++) {
+                copyMetaMembers(meta, traits[i]);
+            }
+        }
+        if (meta.definition) {
+            copyMetaMembers(meta, meta.definition);
+        }
+    };
+
     Meta.prototype.resolve = function(options) {
         // convert subject into a usable prototype
         // add default members
@@ -643,6 +813,72 @@ var moduleFactory = function(exports) {
             metaResolveMember(this, name, options || {});
         }
         return this;
+    };
+
+    Meta.prototype.add = function() {
+        if (this.ownerTrait) {
+            throw new Error('This object has no extensible prototype, modify parent Trait instead: ' + this.ownerTrait.name);
+        }
+        var argumentsLength = arguments.length;
+        for (var i = 0; i < argumentsLength; i++) {
+            var argument = arguments[i];
+            if (typeof argument == 'object') {
+                if (argument instanceof Trait) {
+                    var alreadyExists = false;
+                    for (var j = this.traits.length - 1; j >= 0; j--) {
+                        if (this.traits[j] === argument) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyExists) {
+                        this.traits.push(argument);
+                    }
+                } else {
+                    if (!this.definition) {
+                        this.definition = argument;
+                    } else {
+                        extend(this.definition, argument);
+                    }
+                }
+            } else {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+        }
+        return this.refresh().resolve();
+    };
+
+    Meta.prototype.remove = function() {
+        if (this.ownerTrait) {
+            throw new Error('This object has no extensible prototype, modify parent Trait instead: ' + this.ownerTrait.name);
+        }
+        var argumentsLength = arguments.length;
+        for (var i = 0; i < argumentsLength; i++) {
+            var argument = arguments[i];
+            if (typeof argument == 'object') {
+                if (argument instanceof Trait) {
+                    for (var j = this.traits.length - 1; j >= 0; j--) {
+                        if (this.traits[j] === argument) {
+                            this.traits.splice(j, 1);
+                            j++;
+                        }
+                    }
+                } else {
+                    if (this.definition) {
+                        for (var name in argument) {
+                            if (argument.hasOwnProperty(name)) {
+                                if (typeof this.definition[name] != 'undefined') {
+                                    delete this.definition[name];
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+        }
+        return this.refresh().resolve();
     };
 
     var anonymousTraits = 0;
@@ -677,6 +913,87 @@ var moduleFactory = function(exports) {
         }
     };
 
+    Trait.prototype.addTo = function(target) {
+        if (target instanceof Trait) {
+            target.add(this);
+        } else if (typeof target == 'object') {
+            if (target instanceof Meta) {
+                target.add(this);
+            } else {
+                var meta = Meta.of(target);
+                if (!meta) {
+                    this.mixin(target);
+                } else {
+                    meta.add(this);                    
+                }
+            }
+        } else {
+            throw new Error('cannot add a Trait to this target');
+        }
+        return this;
+    };
+
+    Trait.prototype.add = function() {
+        var argumentsLength = arguments.length;
+        for (var i = 0; i < argumentsLength; i++) {
+            var argument = arguments[i];
+            if (typeof argument == 'object') {
+                if (argument instanceof Trait) {
+                    var alreadyExists = false;
+                    for (var j = this.traits.length - 1; j >= 0; j--) {
+                        if (this.traits[j] === argument) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyExists) {
+                        this.traits.push(argument);
+                    }
+                } else {
+                    if (!this.definition) {
+                        this.definition = argument;
+                    } else {
+                        extend(this.definition, argument);
+                    }
+                }
+            } else {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+        }
+        return this;
+    };
+
+    Trait.prototype.remove = function() {
+        var argumentsLength = arguments.length;
+        for (var i = 0; i < argumentsLength; i++) {
+            var argument = arguments[i];
+            if (typeof argument == 'object') {
+                if (argument instanceof Trait) {
+                    for (var j = this.traits.length - 1; j >= 0; j--) {
+                        if (this.traits[j] === argument) {
+                            this.traits.splice(j, 1);
+                            j++;
+                        }
+                    }
+                } else {
+                    if (this.definition) {
+                        for (var name in argument) {
+                            if (argument.hasOwnProperty(name)) {
+                                if (typeof this.definition[name] != 'undefined') {
+                                    delete this.definition[name];
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+        }
+        return this;
+    };
+
+
     Trait.prototype.create = function(definition) {
         // create a prototype using only this trait, and optional definition
         return phenotype.create(this, definition);
@@ -709,7 +1026,7 @@ var moduleFactory = function(exports) {
             source = this.fixed.prototype;
         } else {
             source = this.meta().resolve({ ignoreRequired: true }).subject;
-        }        
+        }
         extend(target, source, {
             memberCopy: function(target, source, name) {
                 var sourceValue = source[name];
@@ -728,12 +1045,12 @@ var moduleFactory = function(exports) {
 
     var createProxy = function(traits, definition) {
 
-        var getProto = function() {
-            return Meta.forObject(traits, definition).resolve().subject;
-        };
+        // resolve now to test prototype is valid
+        var meta = Meta.forObject(traits, definition).resolve();
 
-        // run now to test prototype is valid
-        getProto();
+        var getProto = function() {
+            return meta.refresh().resolve().subject;
+        };
 
         // a simple forwarder proxy
         var handler = {
@@ -855,9 +1172,31 @@ var moduleFactory = function(exports) {
         return new ConstructorFunction();
     };
 
-    phenotype.mixin = function(target) {
-
+    EventEmitter.proxy = {
+        forward: function(target, functionName, args) {
+            var emitter = target._eventEmitter || (target._eventEmitter = new EventEmitter(target));
+            return emitter[functionName].apply(emitter, args);
+        },
+        members: {
+            on: function(){
+                EventEmitter.proxy.forward(this, 'on', arguments);
+                return this;
+            },
+            off: function(){
+                EventEmitter.proxy.forward(this, 'off', arguments);
+                return this;
+            },
+            emit: function(){
+                EventEmitter.proxy.forward(this, 'emit', arguments);
+                return this;
+            }
+        },
+        create: function(){
+            return extend({}, EventEmitter.proxy.members);
+        }
     };
+
+    var HasEvents = phenotype.HasEvents = new Trait('HasEvents', EventEmitter.proxy.create());
 
 };
 if (typeof require == 'undefined') {
