@@ -117,7 +117,13 @@ var moduleFactory = function(exports) {
         this.propertyTrackers = {};
     };
 
-    EventEmitter.prototype.listeners = function(eventType, createIfNotExists) {
+    EventEmitter.of = function(source) {
+        if (typeof source == 'object') {
+            return source._eventEmitter;
+        }
+    };
+
+    EventEmitter.prototype.getListeners = function(eventType, createIfNotExists) {
         var listeners = this.listeners;
         if (!listeners) {
             if (!createIfNotExists) return;
@@ -142,8 +148,16 @@ var moduleFactory = function(exports) {
         } else {
             eventType = arguments[0];
             listener = arguments[1];
+            var eventTypes;
+            if (typeof eventType == 'string' && (eventTypes = eventType.split(' ')).length > 1) {
+                var eventTypesLength = eventTypes.length;
+                for (var i = 0; i < eventTypesLength; i++) {
+                    this.on(eventTypes[i], listener);
+                }
+                return this;
+            }
         }
-        var listeners = this.listeners(eventType, true);
+        var listeners = this.getListeners(eventType, true);
         listeners.push(listener);
         return this;
     };
@@ -159,12 +173,20 @@ var moduleFactory = function(exports) {
         } else {
             eventType = arguments[0];
             listener = arguments[1];
+            var eventTypes;
+            if (typeof eventType == 'string' && (eventTypes = eventType.split(' ')).length > 1) {
+                var eventTypesLength = eventTypes.length;
+                for (var i = 0; i < eventTypesLength; i++) {
+                    this.off(eventTypes[i], listener);
+                }
+                return this;
+            }
         }
         if (!eventType) {
             this.listeners.length = 0;
             return this;
         }
-        var listeners = this.listeners(eventType);
+        var listeners = this.getListeners(eventType);
         if (!listeners) return this;
         if (!listener) {
             listeners.length = 0;
@@ -185,11 +207,12 @@ var moduleFactory = function(exports) {
         var evnt;
         var listeners;
         if (eventType instanceof Event) {
-            listeners = this.listeners(event.type);
+            evnt = eventType;
+            listeners = this.getListeners(evnt.type);
             if (!listeners) return this;
             evnt.source = this.source;
         } else {
-            listeners = this.listeners(eventType);
+            listeners = this.getListeners(eventType);
             if (!listeners) return this;
             evnt = new Event(eventType, arguments.length > 1 ? Array.prototype.slice.call(arguments, 1) : null, this.source);
         }
@@ -198,7 +221,7 @@ var moduleFactory = function(exports) {
             try {
                 listeners[i].apply(evnt.source, evnt.args);
             } catch (error) {
-                if (evnt.type === 'error' || !this.listeners('listenererror')) {
+                if (evnt.type === 'error' || !this.getListeners('listenererror')) {
                     console.error('Event listener ' + error.stack);
                 } else {
                     this.emit('listenererror', {
@@ -214,7 +237,7 @@ var moduleFactory = function(exports) {
 
     EventEmitter.prototype.propertyChanged = function(property, value, previousValue) {
         var eventType = property.name + 'changed';
-        if (this.listeners(eventType)) {
+        if (this.getListeners(eventType)) {
             this.emit(eventType, {
                 property: property,
                 previousValue: previousValue,
@@ -289,6 +312,7 @@ var moduleFactory = function(exports) {
                 if (!async.isComplete) {
                     var error = new Error('timeout');
                     error.timeout = timeout;
+                    error.async = async;
                     async.failed(error);
                 }
             }, timeout);
@@ -343,13 +367,14 @@ var moduleFactory = function(exports) {
                 var index = 0, length = values.length;
                 var asyncEnd, asyncCallback = function(err, result) {
                     index++;
-                    pipeRun(err, result, true);
+                    pipeRun(err, result, options.continueOnError);
                 };
+                var self = this;
                 var pipeRun = function pipeRun(lastError, lastResult, continueOnError) {
-                    while (index < length) {
+                    while (index < length && (!lastError || continueOnError)) {
                         try {
                             var value = values[index];
-                            lastResult = value.apply(this, [lastError, lastResult]);
+                            lastResult = value.apply(self, [lastError, lastResult]);
                             if (lastResult instanceof Async) {
                                 lastResult.callback = asyncCallback;
                                 if (!asyncEnd) {
@@ -360,7 +385,7 @@ var moduleFactory = function(exports) {
                         } catch(err) {
                             lastError = err;
                             lastResult = null;
-                            if (!continueOnError) {
+                            if (!continueOnError && !asyncEnd) {
                                 throw err;
                             }
                         }
@@ -574,8 +599,6 @@ var moduleFactory = function(exports) {
         this.options = typeof options == 'function' ? { getter: options } : options;
     };
 
-    member.Property.all = new EventEmitter();
-
     member.Property.prototype.isReadOnly = function() {
         return !!(this.options && this.options.getter && !this.options.setter);
     };
@@ -583,7 +606,7 @@ var moduleFactory = function(exports) {
     member.Property.prototype.getValue = function(memberName, source){
         this.name = memberName;
         if (!this.storageName) {
-            this.storageName = conventions.storageNamePrefix + memberName;
+            this.storageName = (this.options && this.options.storageName) || conventions.storageNamePrefix + memberName;
         }
         var property = this;
         var accessor = function(value) {
@@ -593,6 +616,9 @@ var moduleFactory = function(exports) {
                     returnValue = property.options.getter.call(this);
                 } else {
                     returnValue = this[property.storageName];
+                }
+                if (typeof returnValue == 'undefined' && property.options && typeof property.options.defaultValue != 'undefined') {
+                    returnValue = property.options.defaultValue;
                 }
                 return returnValue;
             } else {
@@ -799,6 +825,19 @@ var moduleFactory = function(exports) {
         return this;
     };
 
+    Meta.prototype.has = function(trait) {
+        if (this.traits) {
+            var traitsLength = this.traits.length;
+            for (var i = 0; i < traitsLength; i++) {
+                var metaTrait = this.traits[i];
+                if (metaTrait === trait || metaTrait.has(trait)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
     var buildMetaSubject = function(meta) {
         var traits = meta.traits;
         if (traits && traits.length) {
@@ -946,6 +985,19 @@ var moduleFactory = function(exports) {
             throw new Error('cannot add a Trait to this target');
         }
         return this;
+    };
+
+    Trait.prototype.has = function(trait) {
+        if (this.traits) {
+            var traitsLength = this.traits.length;
+            for (var i = 0; i < traitsLength; i++) {
+                var parentTrait = this.traits[i];
+                if (parentTrait === trait || parentTrait.has(trait)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     };
 
     Trait.prototype.add = function() {
@@ -1205,13 +1257,10 @@ var moduleFactory = function(exports) {
                 EventEmitter.proxy.forward(this, 'emit', arguments);
                 return this;
             }
-        },
-        create: function(){
-            return extend({}, EventEmitter.proxy.members);
         }
     };
 
-    var HasEvents = phenotype.HasEvents = new Trait('HasEvents', EventEmitter.proxy.create());
+    var HasEvents = phenotype.HasEvents = new Trait('HasEvents', EventEmitter.proxy.members);
 
 };
 if (typeof require == 'undefined') {

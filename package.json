@@ -4,8 +4,8 @@
   "description": "Javascript typing system based on Traits",
   "main": "phenotype.js",
   "scripts": {
-    "test": "node .\\node_modules\\mocha\\bin\\mocha",
-    "monitor": "node .\\node_modules\\mocha\\bin\\mocha --watch --check-leaks --reporter spec"
+    "test": "node --harmony-proxies .\\node_modules\\mocha\\bin\\mocha --growl --check-leaks --reporter spec",
+    "monitor": "node --harmony-proxies .\\node_modules\\mocha\\bin\\mocha --growl --watch --check-leaks --reporter spec"
   },
   "repository": {
     "type": "git",
