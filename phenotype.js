@@ -1,22 +1,23 @@
-'use strict';
 var moduleFactory = function(exports) {
+    'use strict';
 
     var extend = function(target, source, options) {
         var opt = options || {};
-        if (typeof source == 'object') {
-            for (var name in source) {
-                if (source.hasOwnProperty(name)) {
-                    if (opt.recursive && typeof target[name] === 'object' &&
-                        typeof source[name] === 'object' &&
-                        !(target instanceof Array) &&
-                        !(source instanceof Array)) {
-                        extend(target[name], source[name], opt);
+        if (typeof source !== 'object') {
+            return target;
+        }
+        for (var name in source) {
+            if (source.hasOwnProperty(name)) {
+                if (opt.recursive && typeof target[name] === 'object' &&
+                    typeof source[name] === 'object' &&
+                    !(target instanceof Array) &&
+                    !(source instanceof Array)) {
+                    extend(target[name], source[name], opt);
+                } else {
+                    if (opt.memberCopy) {
+                        opt.memberCopy(target, source, name);
                     } else {
-                        if (opt.memberCopy) {
-                            opt.memberCopy(target, source, name);
-                        } else {
-                            target[name] = source[name];
-                        }
+                        target[name] = source[name];
                     }
                 }
             }
@@ -37,7 +38,7 @@ var moduleFactory = function(exports) {
     var conventions = phenotype.conventions;
 
     var getErrorMethodName = function(error) {
-        if (typeof error.stack == 'string') {
+        if (typeof error.stack === 'string') {
             var methodNameMatch;
             var lines = error.stack.split('\n');
             for (var i = 0; i < lines.length; i++) {
@@ -64,23 +65,34 @@ var moduleFactory = function(exports) {
             error = new Error(message);
         } else {
             error = new Error('implementation is pending');
-            // try to get caller method name from stack trace
-            var methodName = getErrorMethodName(error);
-            if (methodName) {
-                error = new Error('implementation is pending, at method: "' + methodName + '"');
-                error.methodName = methodName;
-            }
         }
+
+        // try to get caller method name from stack trace
+        var methodName = getErrorMethodName(error);
+        if (methodName) {
+            if (!message) {
+                error = new Error('implementation is pending, at method: "' + methodName + '"');
+            }
+            error.methodName = methodName;
+        }
+
         error.pending = true;
         throw error;
     };
 
-    phenotype.ProxyIsSupported = (function(){
-        return (typeof Proxy !== 'undefined' && typeof Proxy.create == 'function');
+    phenotype.pending.message = function(msg) {
+        return function(){
+            return phenotype.pending(msg);
+        };
+    };
+
+    phenotype.dynamic = (function(){
+        /* global Proxy */
+        return (typeof Proxy !== 'undefined' && typeof Proxy.create === 'function');
     })();
 
     phenotype.flatObject = function(obj) {
-        if (typeof obj == 'object') {
+        if (typeof obj === 'object') {
             var flat = {};
             for (var name in obj) {
                 if (name !== conventions.metaPropertyName) {
@@ -93,7 +105,7 @@ var moduleFactory = function(exports) {
     };
 
     var Event = phenotype.Event = function Event(type, args, source){
-        if (typeof type != 'string' || type.length < 1) {
+        if (typeof type !== 'string' || type.length < 1) {
             var error = new Error('invalid event type');
             error.invalidEventType = true;
             throw error;
@@ -118,7 +130,7 @@ var moduleFactory = function(exports) {
     };
 
     EventEmitter.of = function(source) {
-        if (typeof source == 'object') {
+        if (typeof source === 'object') {
             return source._eventEmitter;
         }
     };
@@ -126,12 +138,12 @@ var moduleFactory = function(exports) {
     EventEmitter.prototype.getListeners = function(eventType, createIfNotExists) {
         var listeners = this.listeners;
         if (!listeners) {
-            if (!createIfNotExists) return;
+            if (!createIfNotExists) { return; }
             listeners = this.listeners = {};
         }
         var eventListeners = listeners[eventType];
         if (!eventListeners) {
-            if (!createIfNotExists) return;
+            if (!createIfNotExists) { return; }
             eventListeners = listeners[eventType] = [];
         }
         return eventListeners;
@@ -139,17 +151,19 @@ var moduleFactory = function(exports) {
 
     EventEmitter.prototype.on = function() {
         var eventType, listener;
-        if (typeof arguments[0] == 'object') {
+        if (typeof arguments[0] === 'object') {
             var map = arguments[0];
             for (eventType in map) {
-                this.on(eventType, map[eventType]);
+                if (map.hasOwnProperty(eventType)) {
+                    this.on(eventType, map[eventType]);
+                }
             }
             return this;
         } else {
             eventType = arguments[0];
             listener = arguments[1];
             var eventTypes;
-            if (typeof eventType == 'string' && (eventTypes = eventType.split(' ')).length > 1) {
+            if (typeof eventType === 'string' && (eventTypes = eventType.split(' ')).length > 1) {
                 var eventTypesLength = eventTypes.length;
                 for (var i = 0; i < eventTypesLength; i++) {
                     this.on(eventTypes[i], listener);
@@ -163,20 +177,22 @@ var moduleFactory = function(exports) {
     };
 
     EventEmitter.prototype.off = function() {
-        var eventType, listener;
-        if (typeof arguments[0] == 'object') {
+        var eventType, listener, i;
+        if (typeof arguments[0] === 'object') {
             var map = arguments[0];
             for (eventType in map) {
-                this.off(eventType, map[eventType]);
+                if (map.hasOwnProperty(eventType)) {
+                    this.off(eventType, map[eventType]);
+                }
             }
             return this;
         } else {
             eventType = arguments[0];
             listener = arguments[1];
             var eventTypes;
-            if (typeof eventType == 'string' && (eventTypes = eventType.split(' ')).length > 1) {
+            if (typeof eventType === 'string' && (eventTypes = eventType.split(' ')).length > 1) {
                 var eventTypesLength = eventTypes.length;
-                for (var i = 0; i < eventTypesLength; i++) {
+                for (i = 0; i < eventTypesLength; i++) {
                     this.off(eventTypes[i], listener);
                 }
                 return this;
@@ -187,13 +203,13 @@ var moduleFactory = function(exports) {
             return this;
         }
         var listeners = this.getListeners(eventType);
-        if (!listeners) return this;
+        if (!listeners) { return this; }
         if (!listener) {
             listeners.length = 0;
             return this;
         }
         var length = listeners.length;
-        for (var i = 0; i < length; i++) {
+        for (i = 0; i < length; i++) {
             if (listeners[i] === listener) {
                 listeners.splice(i, 1);
                 i--;
@@ -209,12 +225,13 @@ var moduleFactory = function(exports) {
         if (eventType instanceof Event) {
             evnt = eventType;
             listeners = this.getListeners(evnt.type);
-            if (!listeners) return this;
+            if (!listeners) { return this; }
             evnt.source = this.source;
         } else {
             listeners = this.getListeners(eventType);
-            if (!listeners) return this;
-            evnt = new Event(eventType, arguments.length > 1 ? Array.prototype.slice.call(arguments, 1) : null, this.source);
+            if (!listeners) { return this; }
+            evnt = new Event(eventType, arguments.length > 1 ?
+                Array.prototype.slice.call(arguments, 1) : null, this.source);
         }
         var length = listeners.length;
         for (var i = 0; i < length; i++) {
@@ -222,7 +239,10 @@ var moduleFactory = function(exports) {
                 listeners[i].apply(evnt.source, evnt.args);
             } catch (error) {
                 if (evnt.type === 'error' || !this.getListeners('listenererror')) {
-                    console.error('Event listener ' + error.stack);
+                    /* global console */
+                    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+                        console.error('Event listener ' + error.stack);
+                    }
                 } else {
                     this.emit('listenererror', {
                         originalEvent: evnt,
@@ -320,7 +340,7 @@ var moduleFactory = function(exports) {
     };
 
     Async.prototype.complete = function(err, result) {
-        if (this.isComplete) return;
+        if (this.isComplete) { return; }
         this.isComplete = true;
         if (this.listeners) {
             var length = this.listeners.length;
@@ -328,7 +348,7 @@ var moduleFactory = function(exports) {
                 this.listeners[i](err, result);
             }
         }
-        if (typeof this.callback != 'function') return;
+        if (typeof this.callback !== 'function') { return; }
         return this.callback(err, result);
     };
 
@@ -356,7 +376,7 @@ var moduleFactory = function(exports) {
         var values = sequence.values = [];
         for (var i = 0; i < definitions.length; i++) {
             var definition = definitions[i];
-            if (typeof definition.getValue == 'function') {
+            if (typeof definition.getValue === 'function') {
                 values[i] = definition.getValue(memberName, sequence.sources[i]);
             } else {
                 values[i] = definition;
@@ -432,7 +452,7 @@ var moduleFactory = function(exports) {
             var ancestorTraits = [];
             if (source.traits instanceof Array) {
                 ancestorTraits = source.traits;
-            } else if (typeof source.traits == 'object') {
+            } else if (typeof source.traits === 'object') {
                 for (var traitName in source.traits) {
                     if (source.traits.hasOwnProperty(traitName)) {
                         ancestorTraits.push(source.traits[traitName]);
@@ -444,52 +464,54 @@ var moduleFactory = function(exports) {
                 var trait = ancestorTraits[i];
                 var traitMeta = trait.meta();
                 var definition = traitMeta.subject[memberName];
-                if (definition) {
-                    if (definition instanceof member.Conflict) {
-                        if (options.recursive) {
-                            // use all conflicting definitions
-                            for (var j = 0; j < definition.sources.length; j++) {
-                                sequence.definitions.push(definition.sources[j].member);
-                                sequence.sources.push(definition.sources[j].source);
-                                ancestorCount++;
-                            }
-                        } else {
-                            error = new Error(definition.getMessage());
-                            error.combinationAncestorsConflict = definition;
-                            error.combination = this;
-                            throw error;
+                if (!definition) {
+                    continue;
+                }
+                if (definition instanceof member.Conflict) {
+                    if (options.recursive) {
+                        // use all conflicting definitions
+                        for (var j = 0; j < definition.sources.length; j++) {
+                            sequence.definitions.push(definition.sources[j].member);
+                            sequence.sources.push(definition.sources[j].source);
+                            ancestorCount++;
                         }
-                    } else if (definition instanceof member.Combination) {
-                        // compose with ancestor combination
-                        var ancestorSourceTrait = traitMeta.sourceOf[memberName];
-                        var ancestorCombined = definition.getValue(memberName, ancestorSourceTrait);
-                        sequence.definitions.push(ancestorCombined);
-                        sequence.sources.push(ancestorSourceTrait);
-                        ancestorCount++;
-                    } else if (definition instanceof member.Required) {
-                        // ignore
-                    } else if (definition instanceof member.Property) {
-                        error = new Error('properties cannot be combined. member: "' + memberName + '"');
-                        error.combinationAncestorProperty = definition;
+                    } else {
+                        error = new Error(definition.getMessage());
+                        error.combinationAncestorsConflict = definition;
                         error.combination = this;
                         throw error;
-                    } else {
-                        sequence.definitions.push(definition);
-                        sequence.sources.push(trait);
-                        ancestorCount++;
                     }
+                } else if (definition instanceof member.Combination) {
+                    // compose with ancestor combination
+                    var ancestorSourceTrait = traitMeta.sourceOf[memberName];
+                    var ancestorCombined = definition.getValue(memberName, ancestorSourceTrait);
+                    sequence.definitions.push(ancestorCombined);
+                    sequence.sources.push(ancestorSourceTrait);
+                    ancestorCount++;
+                } else if (definition instanceof member.Required) {
+                    // ignore
+                } else if (definition instanceof member.Property) {
+                    error = new Error('properties cannot be combined. member: "' + memberName + '"');
+                    error.combinationAncestorProperty = definition;
+                    error.combination = this;
+                    throw error;
+                } else {
+                    sequence.definitions.push(definition);
+                    sequence.sources.push(trait);
+                    ancestorCount++;
                 }
             }
 
             if (options.singleAncestor && ancestorCount > 1) {
-                errorMessage = 'multiple ancestor definitions where found (single was expected). member: "' + memberName + '"';
-                if (typeof source.name == 'string') {
+                errorMessage = 'multiple ancestor definitions where found' +
+                    ' (single was expected). member: "' + memberName + '"';
+                if (typeof source.name === 'string') {
                     errorMessage += ', at: "' + source.name + '"';
                 }
                 errorMessage += ', sources: ';
                 for (i = 0; i < sequence.sources.length; i++) {
                     var ancestorSource = sequence.sources[i];
-                    if (typeof ancestorSource.name == 'string')  {
+                    if (typeof ancestorSource.name === 'string')  {
                         errorMessage += ', "' + ancestorSource.name + '"';
                     }
                 }
@@ -502,9 +524,9 @@ var moduleFactory = function(exports) {
 
         if (options.wrap) {
             var wrapped = options.wrap(combineSequence(sequence, options, memberName), source.meta().base);
-            if (typeof wrapped != 'function') {
+            if (typeof wrapped !== 'function') {
                 errorMessage = 'wrap must return a function. member: "' + memberName + '"';
-                if (typeof source.name == 'string') {
+                if (typeof source.name === 'string') {
                     errorMessage += ', at: "' + source.name + '"';
                 }
                 error = new Error(errorMessage);
@@ -573,7 +595,7 @@ var moduleFactory = function(exports) {
         this.baseTrait = baseTrait;
     };
 
-    member.From.prototype.getValue = function(memberName, source) {
+    member.From.prototype.getValue = function(memberName) {
         return this.baseTrait.getMember(memberName);
     };
 
@@ -587,7 +609,7 @@ var moduleFactory = function(exports) {
         this.memberName = memberName;
     };
 
-    member.AliasOf.prototype.getValue = function(memberName, source) {
+    member.AliasOf.prototype.getValue = function() {
         return this.baseTrait.getMember(this.memberName);
     };
 
@@ -596,28 +618,29 @@ var moduleFactory = function(exports) {
     };
 
     member.Property = function Property(options) {
-        this.options = typeof options == 'function' ? { getter: options } : options;
+        this.options = typeof options === 'function' ? { getter: options } : options;
     };
 
     member.Property.prototype.isReadOnly = function() {
         return !!(this.options && this.options.getter && !this.options.setter);
     };
 
-    member.Property.prototype.getValue = function(memberName, source){
+    member.Property.prototype.getValue = function(memberName){
         this.name = memberName;
         if (!this.storageName) {
             this.storageName = (this.options && this.options.storageName) || conventions.storageNamePrefix + memberName;
         }
         var property = this;
         var accessor = function(value) {
-            if (typeof value == 'undefined') {
-                var returnValue, tracker;
+            if (typeof value === 'undefined') {
+                var returnValue;
                 if (property.options && property.options.getter) {
                     returnValue = property.options.getter.call(this);
                 } else {
                     returnValue = this[property.storageName];
                 }
-                if (typeof returnValue == 'undefined' && property.options && typeof property.options.defaultValue != 'undefined') {
+                if (typeof returnValue === 'undefined' && property.options &&
+                    typeof property.options.defaultValue !== 'undefined') {
                     returnValue = property.options.defaultValue;
                 }
                 return returnValue;
@@ -683,7 +706,7 @@ var moduleFactory = function(exports) {
             return base[name].apply(subject, args);
         };
         this.baseSource = {};
-    };    
+    };
 
     Meta.of = function(subject) {
         if (typeof subject === 'object') {
@@ -700,7 +723,7 @@ var moduleFactory = function(exports) {
         var resolveAfterSet = function() {
 
         };
-        if (typeof currentValue == 'undefined' || currentValue instanceof member.Required) {
+        if (typeof currentValue === 'undefined' || currentValue instanceof member.Required) {
             // absent or required member is added
             target[name] = value;
             meta.sourceOf[name] = source;
@@ -750,7 +773,7 @@ var moduleFactory = function(exports) {
         for (var name in members) {
             if (members.hasOwnProperty(name) && name !== conventions.metaPropertyName) {
                 var memberValue = members[name];
-                var memberSource = typeof source == 'function' ? source(name) : source;
+                var memberSource = typeof source === 'function' ? source(name) : source;
                 setMetaMember(meta, name, memberValue, memberSource, override);
             }
         }
@@ -825,6 +848,15 @@ var moduleFactory = function(exports) {
         return this;
     };
 
+    phenotype.refresh = function() {
+        var argumentsLength = arguments.length;
+        for (var i = 0; i < argumentsLength; i++) {
+            var subject = arguments[i];
+            var meta = Meta.of(subject);
+            if (meta && meta.frozen) { meta.refresh().resolve(); }
+        }
+    };
+
     Meta.prototype.has = function(trait) {
         if (this.traits) {
             var traitsLength = this.traits.length;
@@ -864,19 +896,22 @@ var moduleFactory = function(exports) {
         }
         // validates prototype definition is complete
         for (name in this.subject) {
-            metaResolveMember(this, name, options || {});
+            if (this.subject.hasOwnProperty(name)) {
+                metaResolveMember(this, name, options || {});
+            }
         }
         return this;
     };
 
     Meta.prototype.add = function() {
         if (this.ownerTrait) {
-            throw new Error('This object has no extensible prototype, modify parent Trait instead: ' + this.ownerTrait.name);
+            throw new Error('This object has no extensible prototype' +
+                ', modify parent Trait instead: ' + this.ownerTrait.name);
         }
         var argumentsLength = arguments.length;
         for (var i = 0; i < argumentsLength; i++) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
+            if (typeof argument === 'object') {
                 if (argument instanceof Trait) {
                     var alreadyExists = false;
                     for (var j = this.traits.length - 1; j >= 0; j--) {
@@ -904,32 +939,31 @@ var moduleFactory = function(exports) {
 
     Meta.prototype.remove = function() {
         if (this.ownerTrait) {
-            throw new Error('This object has no extensible prototype, modify parent Trait instead: ' + this.ownerTrait.name);
+            throw new Error('This object has no extensible prototype' +
+                ', modify parent Trait instead: ' + this.ownerTrait.name);
         }
         var argumentsLength = arguments.length;
         for (var i = 0; i < argumentsLength; i++) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
-                if (argument instanceof Trait) {
-                    for (var j = this.traits.length - 1; j >= 0; j--) {
-                        if (this.traits[j] === argument) {
-                            this.traits.splice(j, 1);
-                            j++;
-                        }
-                    }
-                } else {
-                    if (this.definition) {
-                        for (var name in argument) {
-                            if (argument.hasOwnProperty(name)) {
-                                if (typeof this.definition[name] != 'undefined') {
-                                    delete this.definition[name];
-                                }
-                            }
-                        }
+            if (typeof argument !== 'object') {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+            if (argument instanceof Trait) {
+                for (var j = this.traits.length - 1; j >= 0; j--) {
+                    if (this.traits[j] === argument) {
+                        this.traits.splice(j, 1);
+                        j++;
                     }
                 }
-            } else {
-                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            } else if (this.definition) {
+                for (var name in argument) {
+                    if (argument.hasOwnProperty(name)) {
+                        if (typeof this.definition[name] === 'undefined') {
+                            continue;
+                        }
+                        delete this.definition[name];
+                    }
+                }
             }
         }
         return this.refresh().resolve();
@@ -941,7 +975,7 @@ var moduleFactory = function(exports) {
         this.traits = [];
         for (var i = arguments.length - 1; i >= 0; i--) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
+            if (typeof argument === 'object') {
                 if (argument instanceof Trait) {
                     this.traits.unshift(argument);
                 } else {
@@ -951,7 +985,7 @@ var moduleFactory = function(exports) {
                     this.definition = argument;
                 }
             } else {
-                if (typeof argument == 'string' && i === 0) {
+                if (typeof argument === 'string' && i === 0) {
                     this.name = argument;
                 } else {
                     throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
@@ -970,7 +1004,7 @@ var moduleFactory = function(exports) {
     Trait.prototype.addTo = function(target) {
         if (target instanceof Trait) {
             target.add(this);
-        } else if (typeof target == 'object') {
+        } else if (typeof target === 'object') {
             if (target instanceof Meta) {
                 target.add(this);
             } else {
@@ -978,11 +1012,31 @@ var moduleFactory = function(exports) {
                 if (!meta) {
                     this.mixin(target);
                 } else {
-                    meta.add(this);                    
+                    meta.add(this);
                 }
             }
         } else {
-            throw new Error('cannot add a Trait to this target');
+            throw new Error('cannot add a Trait to this object');
+        }
+        return this;
+    };
+
+    Trait.prototype.removeFrom = function(target) {
+        if (target instanceof Trait) {
+            target.remove(this);
+        } else if (typeof target === 'object') {
+            if (target instanceof Meta) {
+                target.remove(this);
+            } else {
+                var meta = Meta.of(target);
+                if (!meta) {
+                    throw new Error('cannot remove Traits from this object');
+                } else {
+                    meta.remove(this);
+                }
+            }
+        } else {
+            throw new Error('cannot remove Traits from this object');
         }
         return this;
     };
@@ -1004,7 +1058,7 @@ var moduleFactory = function(exports) {
         var argumentsLength = arguments.length;
         for (var i = 0; i < argumentsLength; i++) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
+            if (typeof argument === 'object') {
                 if (argument instanceof Trait) {
                     var alreadyExists = false;
                     for (var j = this.traits.length - 1; j >= 0; j--) {
@@ -1034,27 +1088,24 @@ var moduleFactory = function(exports) {
         var argumentsLength = arguments.length;
         for (var i = 0; i < argumentsLength; i++) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
-                if (argument instanceof Trait) {
-                    for (var j = this.traits.length - 1; j >= 0; j--) {
-                        if (this.traits[j] === argument) {
-                            this.traits.splice(j, 1);
-                            j++;
-                        }
+            if (typeof argument !== 'object') {
+                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
+            }
+            if (argument instanceof Trait) {
+                for (var j = this.traits.length - 1; j >= 0; j--) {
+                    if (this.traits[j] === argument) {
+                        this.traits.splice(j, 1);
+                        j++;
                     }
-                } else {
-                    if (this.definition) {
-                        for (var name in argument) {
-                            if (argument.hasOwnProperty(name)) {
-                                if (typeof this.definition[name] != 'undefined') {
-                                    delete this.definition[name];
-                                }
-                            }
+                }
+            } else if (this.definition) {
+                for (var name in argument) {
+                    if (argument.hasOwnProperty(name)) {
+                        if (typeof this.definition[name] !== 'undefined') {
+                            delete this.definition[name];
                         }
                     }
                 }
-            } else {
-                throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
             }
         }
         return this;
@@ -1074,23 +1125,23 @@ var moduleFactory = function(exports) {
         return Meta.forTrait(this);
     };
 
-    Trait.prototype.fix = function() {
+    Trait.prototype.freeze = function() {
         var meta = this.meta().resolve();
-        meta.fixed = true;
-        this.fixed = createNamedFunction(this.name);
-        this.fixed.prototype = meta.subject;
+        meta.frozen = true;
+        this.frozen = createNamedFunction(this.name);
+        this.frozen.prototype = meta.subject;
         return this;
     };
 
-    Trait.prototype.unfix = function() {
-        this.fixed = null;
+    Trait.prototype.unfreeze = function() {
+        this.frozen = null;
         return this;
     };
 
     Trait.prototype.mixin = function(target) {
         var source;
-        if (this.fixed) {
-            source = this.fixed.prototype;
+        if (this.frozen) {
+            source = this.frozen.prototype;
         } else {
             source = this.meta().resolve({ ignoreRequired: true }).subject;
         }
@@ -1098,9 +1149,12 @@ var moduleFactory = function(exports) {
             memberCopy: function(target, source, name) {
                 var sourceValue = source[name];
                 if (sourceValue instanceof member.Required) {
-                    if (typeof target[name] == 'undefined') {
-                        var error = new Error(sourceValue.getMessage(name, source.__meta__.sourceOf[name]));
+                    if (typeof target[name] === 'undefined') {
+                        var requireSource = Meta.of(source).sourceOf[name];
+                        var error = new Error(sourceValue.getMessage(name, requireSource));
                         error.required = sourceValue;
+                        error.requiredMember = name;
+                        error.requiredBy = requireSource;
                         throw error;
                     }
                 } else {
@@ -1158,9 +1212,9 @@ var moduleFactory = function(exports) {
                     Object.getOwnPropertyNames(getProto()).forEach(function(name) {
                         result[name] = Object.getOwnPropertyDescriptor(getProto(), name);
                     });
-                return result;
+                    return result;
                 }
-                // As long as getProto() is not frozen, the proxy won't allow itself to be fixed
+                // As long as getProto() is not frozen, the proxy won't allow itself to be frozen
                 return undefined; // will cause a TypeError to be thrown
             },
             has: function(name) {
@@ -1173,10 +1227,12 @@ var moduleFactory = function(exports) {
                 return getProto()[name];
             },
             set: function(receiver, name, val) {
-                getProto()[name] = val; return true;
+                getProto()[name] = val;
+                return true;
             }, // bad behavior when set fails in non-strict mode
             enumerate: function() {
                 var result = [];
+                /* jshint forin:false */
                 for (var name in getProto()) {
                     result.push(name);
                 }
@@ -1196,7 +1252,7 @@ var moduleFactory = function(exports) {
         var definition, i;
         for (i = arguments.length - 1; i >= 0; i--) {
             var argument = arguments[i];
-            if (typeof argument == 'object') {
+            if (typeof argument === 'object') {
                 if (argument instanceof Trait) {
                     traits.unshift(argument);
                 } else {
@@ -1205,15 +1261,15 @@ var moduleFactory = function(exports) {
                     }
                     definition = argument;
                 }
-            } else if (typeof argument != 'undefined') {
+            } else if (typeof argument !== 'undefined') {
                 throw new Error('Unexpected argument at index ' + i + ', type: ' + typeof argument);
             }
         }
 
         var ConstructorFunction;
         var traitsLength = traits.length;
-        if ((!definition) && traitsLength === 1 && traits[0].fixed) {
-            ConstructorFunction = traits[0].fixed;
+        if ((!definition) && traitsLength === 1 && traits[0].frozen) {
+            ConstructorFunction = traits[0].frozen;
         } else {
             var proto;
             var typeName = '';
@@ -1224,10 +1280,10 @@ var moduleFactory = function(exports) {
                     typeName += (i > 0 ? '_' : '') + traits[i].name;
                 }
             }
-            if (!phenotype.ProxyIsSupported) {
-                // Proxy is not supported, use a fixed prototype
+            if (!phenotype.dynamic) {
+                // Proxy is not supported, use a frozen prototype
                 var meta = Meta.forObject(traits, definition).resolve();
-                meta.fixed = true;
+                meta.frozen = true;
                 proto = meta.subject;
             } else {
                 proto = createProxy(traits, definition);
@@ -1260,12 +1316,14 @@ var moduleFactory = function(exports) {
         }
     };
 
-    var HasEvents = phenotype.HasEvents = new Trait('HasEvents', EventEmitter.proxy.members);
+    phenotype.HasEvents = new Trait('HasEvents', EventEmitter.proxy.members);
 
 };
-if (typeof require == 'undefined') {
+/* global exports */
+if (typeof require === 'undefined') {
     moduleFactory(window.phenotype = {});
-} else if (typeof exports == 'undefined') {
+} else if (typeof exports === 'undefined') {
+    /* global define */
     define('phenotype', ['exports'], moduleFactory);
 } else {
     moduleFactory(exports);
