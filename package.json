@@ -1,6 +1,6 @@
 {
   "name": "phenotype",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Javascript typing system based on Traits",
   "main": "phenotype.js",
   "scripts": {
