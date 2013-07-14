@@ -1,6 +1,6 @@
 /* global require, describe, before, it */
 var expect = expect || require('expect.js');
-var phenotype = phenotype || require('../phenotype');
+var phenotype = phenotype || require('../src/phenotype');
 var Trait = phenotype.Trait;
 
 describe('Property', function(){
