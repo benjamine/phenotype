@@ -23,13 +23,12 @@ Installation
 ``` sh
 npm install phenotype
 ```
-
 Specs
 -------
 
 Specs (built using mocha.js) run on travis-ci: [![Build Status](https://travis-ci.org/benjamine/phenotype.png?branch=master)](https://travis-ci.org/benjamine/phenotype)
 
-you can test them using ```npm test```, or on browsers opening [Test page](http://benjamine.github.io/JsonDiffPatch/test/test.html)
+you can test them using ```npm test```, or on browsers opening [Test page](http://benjamine.github.io/phenotype/test/test.html)
 
 Introductory Examples
 --------------------
