@@ -5,6 +5,7 @@
   "main": "./src/phenotype.js",
   "scripts": {
     "test": "node --harmony-proxies ./node_modules/mocha/bin/mocha --growl --check-leaks --reporter spec",
+    "testpage": "cp ./node_modules/mocha/mocha.js ./test/modules/mocha.js && cp ./node_modules/mocha/mocha.css ./test/modules/mocha.css && cp ./node_modules/expect.js/expect.js ./test/modules/expect.js && start ./test/test.html",
     "monitor": "node --harmony-proxies ./node_modules/mocha/bin/mocha --growl --watch --check-leaks --reporter spec"
   },
   "repository": {
