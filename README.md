@@ -16,12 +16,20 @@ Phenotype traits extend the typical definition of *Trait*, to use them as the on
 
 This makes them simpler to use, and better matches the [prototypal nature of Javascript](http://javascript.crockford.com/prototypal.html).
 
+
 Installation
 ------------
 
 ``` sh
 npm install phenotype
 ```
+
+Specs
+-------
+
+Specs (built using mocha.js) run on travis-ci: [![Build Status](https://travis-ci.org/benjamine/phenotype.png?branch=master)](https://travis-ci.org/benjamine/phenotype)
+
+you can test them using ```npm test```, or on browsers opening [Test page](http://benjamine.github.io/JsonDiffPatch/test/test.html)
 
 Introductory Examples
 --------------------
